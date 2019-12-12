@@ -2,7 +2,7 @@ from fastai.datasets import untar_data
 import torch
 import torch.nn as nn
 from fastai.text import get_language_model, convert_weights
-from tqdm import tqdm_notebook
+from tqdm import tqdm_notebook, tqdm
 import pickle 
 from fastai.text import AWD_LSTM
 from itertools import chain
@@ -256,7 +256,7 @@ def validate(learn, cuda=True, lm=True) :
    
 def fit2(epochs, learn, lm, cuda=True, show_info=True, grad_clip=0.1, alpha=2., beta=1., record=True, one_cycle=True, 
                  max_lr:Union[float,slice]=0.01,  div_factor:float=25., pct_start:float=0.3, final_div:float=None, moms=(0.95, 0.85),
-                 annealing:Callable=annealing_cos):
+                 annealing:Callable=annealing_cos, notebook=True):
     
      #number of batches in one epoch for validation and training data
     train_size = len(learn.data.train_dl)
@@ -290,7 +290,11 @@ def fit2(epochs, learn, lm, cuda=True, show_info=True, grad_clip=0.1, alpha=2., 
         learn.model.train()
         
         #iterator over all batches in training
-        batches = tqdm_notebook(learn.data.train_dl, leave=False,
+        if notebook :
+            batches = tqdm_notebook(learn.data.train_dl, leave=False,
+                        total=len(learn.data.train_dl), desc=f'Epoch {epoch} training')
+        else :
+             batches = tqdm(learn.data.train_dl, leave=False,
                         total=len(learn.data.train_dl), desc=f'Epoch {epoch} training')
         
         #batch number counter
@@ -301,7 +305,7 @@ def fit2(epochs, learn, lm, cuda=True, show_info=True, grad_clip=0.1, alpha=2., 
         #starts sgd for each batches
         for x, y in batches:
             
-            #cyclical learning rates and momentum
+            #cyclical learning rate and momentum
             if one_cycle :
                 
                 cut = int(total_iterations*pct_start)
@@ -320,7 +324,6 @@ def fit2(epochs, learn, lm, cuda=True, show_info=True, grad_clip=0.1, alpha=2., 
                 
                 #the final learning rate division factor
                 if final_div is None: final_div = div_factor*1e4
-                
                 
                   
                 if iteration < cut :
@@ -376,7 +379,11 @@ def fit2(epochs, learn, lm, cuda=True, show_info=True, grad_clip=0.1, alpha=2., 
         # putting the model in eval mode so that dropout is not applied
         learn.model.eval()
         with torch.no_grad():
-            batches = tqdm_notebook(learn.data.valid_dl, leave=False,
+            if notebook :
+                batches = tqdm_notebook(learn.data.valid_dl, leave=False,
+                     total=len(learn.data.valid_dl), desc=f'Epoch {epoch} validation')
+            else : 
+                batches = tqdm(learn.data.valid_dl, leave=False,
                      total=len(learn.data.valid_dl), desc=f'Epoch {epoch} validation')
             for x, y in batches: 
                 if cuda :
