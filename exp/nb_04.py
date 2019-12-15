@@ -6,6 +6,8 @@
 
 from exp.nb_03 import *
 
+import re
+
 class DataBunch():
     def __init__(self, train_dl, valid_dl, c=None):
         self.train_dl,self.valid_dl,self.c = train_dl,valid_dl,c
@@ -21,11 +23,6 @@ def get_model(data, lr=0.5, nh=50):
     model = nn.Sequential(nn.Linear(m,nh), nn.ReLU(), nn.Linear(nh,data.c))
     return model, optim.SGD(model.parameters(), lr=lr)
 
-class Learner():
-    def __init__(self, model, opt, loss_func, data):
-        self.model,self.opt,self.loss_func,self.data = model,opt,loss_func,data
-
-import re
 
 _camel_re1 = re.compile('(.)([A-Z][a-z]+)')
 _camel_re2 = re.compile('([a-z0-9])([A-Z])')

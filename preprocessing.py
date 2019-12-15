@@ -12,6 +12,8 @@ import numpy as np
 from exp.nb_04 import *
 from torch import *
 from torch.utils.data import Sampler
+import re 
+
 
 def compose(x, funcs, *args, order_key='_order', **kwargs):
     """
@@ -347,3 +349,69 @@ def get_clas_dls(train_ds, valid_ds, bs, **kwargs):
     valid_sampler = SortSampler(valid_ds.x, key=lambda t: len(valid_ds.x[t]))
     return (DataLoader(train_ds, batch_size=bs, sampler=train_sampler, collate_fn=pad_collate, **kwargs),
             DataLoader(valid_ds, batch_size=bs*2, sampler=valid_sampler, collate_fn=pad_collate, **kwargs))
+
+
+class Databunch() :
+    """
+    Container of a Dataloaders for the validation and training datasets 
+
+    Arguments:
+        train_dl: The training dataloader (must implement __iter__ method)
+        valid_dl: The validaation dataloader (must implement __iter__ method)
+
+    """
+    def __init__(self, train_dl, valid_dl, vocab) :
+        self.train_dl = train_dl
+        self.valid_dl = valid_dl
+        self.vocab = vocab
+    
+    @property
+    def train_ds(self): return self.train_dl.dataset
+        
+    @property
+    def valid_ds(self): return self.valid_dl.dataset  
+    
+    def save(self, path) :
+        pickle.dump((self.train_dl, self.valid_dl, self.vocab), open(path, 'wb'))
+
+class LMDatabunch(Databunch) :
+
+    @classmethod
+    def from_csv(cls, path, text_col, pctg, bs=64, bptt=70, vocab=None) :
+        tl = TextList.from_csv(path, text_col)
+        sd = SplitData.split_by_func(tl, partial(random_splitter, pctg=0.2))
+        proc_tok,proc_num = TokenizeProcessor(max_workers=8),NumericalizeProcessor(vocab=vocab)
+        ll = label_by_func(sd, lambda x: 0, proc_x = [proc_tok,proc_num])
+        train_dl, valid_dl = get_lm_dls(ll.train, ll.valid, bs, bptt)
+        return cls(train_dl, valid_dl, proc_num.vocab)
+
+class ClasDatabunch(Databunch) :
+
+    def save(self, path) :
+        pickle.dump((self.train_dl.dataset, self.valid_dl.dataset, self.vocab, self.train_dl.batch_size), open(path, 'wb'))
+    
+    @classmethod
+    def from_csv(cls, path, text_col, label_col, pctg, bs=64, vocab=None) :
+        df = pd.read_csv(path)
+        tl = TextList.from_df(df, text_col)
+        sd = SplitData.split_by_func(tl, partial(random_splitter, pctg=0.2))
+        tweet_to_label = {}
+        it = tqdm_notebook(range(df.shape[0]), total=df.shape[0])
+        for i in it : 
+            tweet_to_label[df[text_col].iloc[i]] = df[label_col].iloc[i]
+        proc_tok,proc_num = TokenizeProcessor(max_workers=8),NumericalizeProcessor(vocab=vocab)
+        ll = label_by_func(sd, lambda x: tweet_to_label[x], proc_x = [proc_tok,proc_num])
+        train_dl, valid_dl = get_clas_dls(ll.train, ll.valid, bs)
+        return cls(train_dl, valid_dl, proc_num.vocab)
+
+def load_data(path, data_type=LMDatabunch) :
+    """
+    Loads the databunch stored in path
+    """
+    if data_type == LMDatabunch :
+        train_dl, valid_dl, vocab = pickle.load(open(path, 'rb'))
+        return data_type(train_dl, valid_dl, vocab)
+    else : 
+        train_ds, valid_ds, vocab, bs = pickle.load(open(path, 'rb'))
+        train_dl, valid_dl = get_clas_dls(train_ds, valid_ds, bs)
+        return data_type(train_dl, valid_dl, bs)
